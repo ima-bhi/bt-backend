@@ -11,6 +11,7 @@ if (!envFound) {
 
 export default {
   env: process.env.NODE_ENV || "dev",
+  isCron: process.env.IS_CRON || "false",
   bt: {
     databaseURL: process.env.USERS_MONGODB_URI,
     port: process.env.USERS_MICROSERVICE_PORT,
@@ -32,9 +33,9 @@ export default {
   api: {
     prefix: "/api",
   },
-  bookings:{
+  bookings: {
     hotelCode: process.env.HOTEL_CODE,
     authCode: process.env.AUTH_CODE,
     syncUrl: process.env.SYNC_URL,
-  }
+  },
 };
