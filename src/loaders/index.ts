@@ -1,0 +1,30 @@
+import expressLoader from "./express";
+import dependencyInjectorLoader from "./dependencyInjector";
+import mongooseLoader from "./mongoose";
+import Logger from "./logger";
+import config from "../config";
+import cronLoader from "./cron";
+
+export default async ({ expressApp }) => {
+  const mongoConnection = await mongooseLoader(config.bt.databaseURL);
+  Logger.info("Mongo loaded & connected!");
+
+  const AppSettingModel = {
+    name: "AppSettingModel",
+    model: require("../models/appSetting.model").default,
+  };
+
+  // It returns the agenda instance because it's needed in the subsequent loaders
+  const { agenda } = await dependencyInjectorLoader({
+    mongoConnection,
+    models: [AppSettingModel],
+  });
+
+  Logger.info("Dependency Injector loaded");
+
+  await cronLoader();
+  Logger.info("Cron loaded");
+
+  await expressLoader({ app: expressApp });
+  Logger.info("Express loaded");
+};
