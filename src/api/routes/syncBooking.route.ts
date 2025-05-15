@@ -6,7 +6,7 @@ const route = Router();
 
 export default (app: Router) => {
   app.use("/", route);
-  
+
   route.post(
     "/bookings/sync",
     //@ts-ignore
@@ -35,13 +35,19 @@ export default (app: Router) => {
           });
         }
 
+        // Validate the gap between fromDate and toDate is not more than 30 days
+        if (moment(toDate).diff(moment(fromDate), "days") > 30) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "The gap between fromDate and toDate should not be more than 30 days",
+          });
+        }
         //syncBooking Controller
         await syncBookingControllerInstance
           .syncBooking(fromDate, toDate)
           .then((results) => {
-            console.log(
-              `Sync completed with ${results} chunks processed`,
-            );
+            console.log(`Sync completed with ${results} chunks processed`);
           })
           .catch((error) => {
             console.error("Sync error:", error);

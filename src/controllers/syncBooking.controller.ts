@@ -3,6 +3,8 @@ import moment from "moment";
 import axios from "axios";
 import config from "../config";
 import xml2js from "xml2js";
+import SyncService from "../services/syncService.service";
+import e from "express";
 @Service()
 export default class SyncBookingController {
   constructor(@Inject("logger") private logger) {}
@@ -79,15 +81,40 @@ export default class SyncBookingController {
         // Parse XML to JSON
         const parser = new xml2js.Parser({ explicitArray: false });
         const jsonData = await parser.parseStringPromise(response.data);
-
+        const syncData = {
+          fromDate: moment(chunk.start).format("YYYY-MM-DD"),
+          toDate: moment(chunk.end).format("YYYY-MM-DD"),
+          statusCode: 0,
+          message: "Success",
+          duration: 0,
+          reservationsCount: 0,
+          cancellationsCount: 0,
+          adaptionDate: moment().format("YYYY-MM-DD"),
+          syncDate: moment().format("YYYY-MM-DD"),
+        };
         // Handle the parsed data as needed
         if (jsonData?.RES_Response?.Errors?.ErrorCode === "0") {
           console.log(
             `Sync successful for chunk: ${chunk.start} to ${chunk.end}`,
           );
           // Save the parsed data
-          await this.saveSyncData(jsonData);
+          const { reservationsCount, cancellationsCount } =
+            await this.saveSyncData(jsonData);
+
+          const duration = Date.now() - startTime;
+          syncData.duration = duration;
+          syncData.reservationsCount = reservationsCount;
+          syncData.cancellationsCount = cancellationsCount;
+        } else if (jsonData?.RES_Response?.Errors?.ErrorCode !== "0") {
+          const duration = Date.now() - startTime;
+          syncData.duration = duration;
+          syncData.statusCode =
+            jsonData?.RES_Response?.Errors?.ErrorCode || 400;
+          syncData.message =
+            jsonData?.RES_Response?.Errors?.ErrorMessage || "Bad Request";
         }
+
+        //store data on syncLogs
       }
     } catch (error) {
       console.error(
@@ -115,12 +142,70 @@ export default class SyncBookingController {
     let reservationsCount = 0;
     let cancellationsCount = 0;
     try {
+      const syncServiceInstance = Container.get(SyncService);
       // Extract reservations from the response
       const reservations = data.RES_Response?.Reservations?.Reservation || [];
       const reservationArray = Array.isArray(reservations)
         ? reservations
         : [reservations].filter(Boolean);
-      console.log(JSON.stringify(reservationArray[0], null, 2));
+
+      // Save each reservation
+      for (const reservation of reservationArray) {
+        //check if reservationId is present
+        if (reservation?.BookByInfo?.UniqueID) {
+          let body = reservation.BookByInfo;
+          const reservationId = reservation.BookByInfo.UniqueID;
+          const { existingReservation } =
+            await syncServiceInstance.checkReservation({
+              UniqueID: reservationId,
+              entryStatus: "Primary",
+            });
+          if (existingReservation) {
+            console.log(`Reservation with ID ${reservationId} already exists.`);
+            // push entry on db with status duplicate
+            body.entryStatus = "Secondary";
+            body.referenceId = existingReservation._id;
+            await syncServiceInstance.createReservation(body);
+          } else {
+            await syncServiceInstance.createReservation(body);
+          }
+        }
+        reservationsCount++;
+      }
+
+      // Extract cancellations from the response
+      const cancellations =
+        data.RES_Response?.Reservations?.CancelReservation || [];
+      const cancellationArray = Array.isArray(cancellations)
+        ? cancellations
+        : [cancellations].filter(Boolean);
+
+      for (const cancellation of cancellationArray) {
+        if (cancellation?.UniqueID) {
+          //create new entry
+          let body = cancellation;
+          const reservationId = cancellation.UniqueID;
+          const { existingCancellation } =
+            await syncServiceInstance.checkCancellation({
+              UniqueID: reservationId,
+              entryStatus: "Primary",
+            });
+          if (existingCancellation) {
+            console.log(
+              `Cancellation with ID ${reservationId} already exists.`,
+            );
+            // push entry on db with status duplicate
+            body.entryStatus = "Secondary";
+            body.referenceId = existingCancellation._id;
+            await syncServiceInstance.createCancellation(body);
+          } else {
+            await syncServiceInstance.createCancellation(body);
+          }
+        }
+        cancellationsCount++;
+      }
+
+      return { reservationsCount, cancellationsCount };
     } catch (error) {}
   }
 }
