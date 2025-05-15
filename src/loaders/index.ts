@@ -22,10 +22,20 @@ export default async ({ expressApp }) => {
     name: "CancellationModel",
     model: require("../models/cancellation.model").default,
   };
+
+  const SyncLogModel = {
+    name: "SyncLogModel",
+    model: require("../models/syncLogs.model").default,
+  };
   // It returns the agenda instance because it's needed in the subsequent loaders
   const { agenda } = await dependencyInjectorLoader({
     mongoConnection,
-    models: [AppSettingModel, ReservationModel, CancellationModel],
+    models: [
+      AppSettingModel,
+      ReservationModel,
+      CancellationModel,
+      SyncLogModel,
+    ],
   });
 
   Logger.info("Dependency Injector loaded");

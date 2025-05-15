@@ -27,6 +27,18 @@ export default (app: Router) => {
             message: "Both fromDate and toDate are required",
           });
         }
+
+        // Validate date format (YYYY-MM-DD)
+        if (
+          !moment(fromDate, "YYYY-MM-DD", true).isValid() ||
+          !moment(toDate, "YYYY-MM-DD", true).isValid()
+        ) {
+          return res.status(400).json({
+            success: false,
+            message: "fromDate and toDate must be in YYYY-MM-DD format",
+          });
+        }
+
         //validate fromdate is smaller than todate
         if (moment(fromDate).isSameOrAfter(moment(toDate))) {
           return res.status(400).json({
@@ -43,6 +55,7 @@ export default (app: Router) => {
               "The gap between fromDate and toDate should not be more than 30 days",
           });
         }
+        
         //syncBooking Controller
         await syncBookingControllerInstance
           .syncBooking(fromDate, toDate)

@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 export interface ICancellation {
-  _id: mongoose.Types.ObjectId;
+  _id?: mongoose.Types.ObjectId;
   LocationId: string;
   UniqueID: string;
   Status: string;

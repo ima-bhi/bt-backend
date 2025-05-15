@@ -16,17 +16,21 @@ export default class SyncBookingController {
 
       // step 2: Process each chunk sequentially with delay
       setImmediate(async () => {
-        for (let i = 0; i < chunks.length; i++) {
-          await this.processChunk(chunks[i]);
-          if (i < chunks.length - 1) {
-            await this.sleep(20000);
+        try {
+          for (let i = 0; i < chunks.length; i++) {
+            await this.processChunk(chunks[i]);
+            if (i < chunks.length - 1) {
+              await this.sleep(20000);
+            }
           }
+          console.log(`Completed sync from ${fromDate} to ${toDate}`);
+        } catch (err) {
+          this.logger?.error?.("Error in setImmediate syncBooking:", err);
         }
-        console.log(`Completed sync from ${fromDate} to ${toDate}`);
       });
       return chunks.length;
     } catch (e) {
-      // this.logger.error(e);
+      this.logger?.error?.("Error in syncBooking:", e);
       throw e;
     }
   }
@@ -64,34 +68,34 @@ export default class SyncBookingController {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  public async processChunk(chunk: { start: string; end: string }) {
+  public async processChunk(
+    chunk: { start: string; end: string },
+    type?: string,
+  ) {
+    const syncServiceInstance = Container.get(SyncService);
     const startTime = Date.now();
     const xmlRequest = await this.createXmlRequest(chunk.start, chunk.end);
     try {
-      console.log(
-        `Processing chunk: ${chunk.start} to ${chunk.end}`,
-        config.bookings.syncUrl,
-      );
+      console.log(`Processing chunk: ${chunk.start} to ${chunk.end}`);
       const response = await axios.post(config.bookings.syncUrl, xmlRequest, {
         headers: {
           "Content-Type": "application/xml",
         },
       });
+      const syncData = {
+        fromDate: moment(chunk.start).format("YYYY-MM-DD"),
+        toDate: moment(chunk.end).format("YYYY-MM-DD"),
+        statusCode: 0,
+        message: "Success",
+        duration: 0,
+        reservationsCount: 0,
+        cancellationsCount: 0,
+        adaptionDate: moment().format("YYYY-MM-DD"),
+      };
       if (response?.data) {
         // Parse XML to JSON
         const parser = new xml2js.Parser({ explicitArray: false });
         const jsonData = await parser.parseStringPromise(response.data);
-        const syncData = {
-          fromDate: moment(chunk.start).format("YYYY-MM-DD"),
-          toDate: moment(chunk.end).format("YYYY-MM-DD"),
-          statusCode: 0,
-          message: "Success",
-          duration: 0,
-          reservationsCount: 0,
-          cancellationsCount: 0,
-          adaptionDate: moment().format("YYYY-MM-DD"),
-          syncDate: moment().format("YYYY-MM-DD"),
-        };
         // Handle the parsed data as needed
         if (jsonData?.RES_Response?.Errors?.ErrorCode === "0") {
           console.log(
@@ -113,11 +117,18 @@ export default class SyncBookingController {
           syncData.message =
             jsonData?.RES_Response?.Errors?.ErrorMessage || "Bad Request";
         }
-
         //store data on syncLogs
+      } else {
+        //getting issue with response
+        const duration = Date.now() - startTime;
+        syncData.duration = duration;
+        syncData.statusCode = 400;
+        syncData.message = "Bad Request";
       }
+      //create sync Log for manual sync
+      if (!type) await syncServiceInstance.createSyncLog(syncData);
     } catch (error) {
-      console.error(
+      this.logger?.error?.(
         `Error processing chunk: ${chunk.start} to ${chunk.end}`,
         error,
       );
@@ -206,6 +217,10 @@ export default class SyncBookingController {
       }
 
       return { reservationsCount, cancellationsCount };
-    } catch (error) {}
+    } catch (error) {
+      this.logger?.error?.("Error in saveSyncData:", error);
+      // Optionally: return default counts or throw
+      return { reservationsCount, cancellationsCount };
+    }
   }
 }

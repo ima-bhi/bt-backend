@@ -88,7 +88,7 @@ export interface BookingTran {
 }
 
 export interface IReservation {
-  _id: mongoose.Types.ObjectId;
+  _id?: mongoose.Types.ObjectId;
   LocationId: string;
   UniqueID: string;
   BookedBy: string;
