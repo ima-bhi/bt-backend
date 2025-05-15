@@ -32,4 +32,9 @@ export default {
   api: {
     prefix: "/api",
   },
+  bookings:{
+    hotelCode: process.env.HOTEL_CODE,
+    authCode: process.env.AUTH_CODE,
+    syncUrl: process.env.SYNC_URL,
+  }
 };
